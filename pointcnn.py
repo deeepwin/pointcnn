@@ -9,15 +9,37 @@ import tensorflow as tf
 
 def xconv(pts, fts, qrs, tag, N, K, D, P, C, C_pts_fts, is_training, with_X_transformation, depth_multiplier,
           sorting_method=None, with_global=False):
-    _, indices_dilated = pf.knn_indices_general(qrs, pts, K * D, True)
+
+    pts = tf.Print( pts, [  tf.shape(pts),  # [128 1024 3]
+                            tf.shape(qrs),  # [128 384 3]
+                            N,              # 128 - batch size, number of points per batch
+                            K,              # 12 - number of nearest neighbors
+                            D,              # 2
+                            P,              # 384
+                            C               # 96
+                         ],
+                    message= "1:",
+                    summarize=10)
+
+    # for the P number of points find the K nearest neighbors s indices, distances are not used
+    _, indices_dilated = pf.knn_indices_general(qrs, pts, K * D, True)  # return -distances, indices
     indices = indices_dilated[:, :, ::D, :]
 
     if sorting_method is not None:
         indices = pf.sort_points(pts, indices, sorting_method)
 
-    nn_pts = tf.gather_nd(pts, indices, name=tag + 'nn_pts')  # (N, P, K, 3)
-    nn_pts_center = tf.expand_dims(qrs, axis=2, name=tag + 'nn_pts_center')  # (N, P, 1, 3)
-    nn_pts_local = tf.subtract(nn_pts, nn_pts_center, name=tag + 'nn_pts_local')  # (N, P, K, 3)
+    nn_pts = tf.gather_nd(pts, indices, name=tag + 'nn_pts')                        # (N,  P,  K, 3)
+    nn_pts_center = tf.expand_dims(qrs, axis=2, name=tag + 'nn_pts_center')         # (N,  P,  1, 3)
+
+    # converts the global coordinate values of the ModelNet object to a relative to each point (local)
+    nn_pts_local = tf.subtract(nn_pts, nn_pts_center, name=tag + 'nn_pts_local')    # (N,  P,  K, 3)
+
+    nn_pts_local = tf.Print( nn_pts_local, [    tf.shape(nn_pts),                   # [128 384 12 3]
+                                                tf.shape(nn_pts_center),            # [128 384 1  3]
+                                                tf.shape(nn_pts_local),             # [128 384 12 3]
+                                           ],
+        message= "2:",
+        summarize=10)
 
     # Prepare features to be transformed
     nn_fts_from_pts_0 = pf.dense(nn_pts_local, C_pts_fts, tag + 'nn_fts_from_pts_0', is_training)
@@ -30,6 +52,32 @@ def xconv(pts, fts, qrs, tag, N, K, D, P, C, C_pts_fts, is_training, with_X_tran
 
     if with_X_transformation:
         ######################## X-transformation #########################
+
+        nn_pts_local = tf.Print(    nn_pts_local, [ tf.shape(nn_pts_local),     # [128 384 12 3]
+                                                    K,                          # 12
+                                                  ],
+                                    message= "3:",
+                                    summarize=10)
+
+        #
+        # conv2d has following data format: (batch_, rows, cols, channels) 
+        #
+        #  rows:        these are the number of points we consider (centers), size 384
+        #  cols:        these are the neighbor points, size 12
+        #  channels:    these are the local local coordinate values, size 3
+        #  K*K:         is the filter sizes 12*12=144
+        #  (1, K):      is the kernel size in this case (1, 12)
+        #
+        # How does the convolution work? we convolute row wise because kernel 
+        # is (1,12). Note, it will not convolute from left to right because 
+        # kernel width is equal columns width 12=12. Filter weights are shared 
+        # among rows, meaning between points (centers). Consequently the CNN
+        # will learn patterns row wise. The NN can therefore learn similar
+        # patterns which would correspond to local objects. These local objects
+        # are aggregate by the following layers (U-net), building up an
+        # abstraction of the overall object to detect or segment.
+        #   
+
         X_0 = pf.conv2d(nn_pts_local, K * K, tag + 'X_0', is_training, (1, K))
         X_0_KK = tf.reshape(X_0, (N, P, K, K), name=tag + 'X_0_KK')
         X_1 = pf.depthwise_conv2d(X_0_KK, K, tag + 'X_1', is_training, (1, K))

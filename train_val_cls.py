@@ -19,7 +19,8 @@ import tensorflow as tf
 from datetime import datetime
 
 
-def main():
+def main(args):
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', '-t', help='Path to data', required=True)
     parser.add_argument('--path_val', '-v', help='Path to validation data')
@@ -32,7 +33,7 @@ def main():
     parser.add_argument('--log', help='Log to FILE in save folder; use - for stdout (default is log.txt)', metavar='FILE', default='log.txt')
     parser.add_argument('--no_timestamp_folder', help='Dont save to timestamp folder', action='store_true')
     parser.add_argument('--no_code_backup', help='Dont backup code', action='store_true')
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     if not args.no_timestamp_folder:
         time_string = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
@@ -78,6 +79,29 @@ def main():
         data_train, label_train = data_utils.grouped_shuffle([data_train, label_train])
         num_epochs = math.floor(num_epochs * (num_train_before_balance / data_train.shape[0]))
 
+    """
+    pd.DataFrame(np.reshape(data_train, (9840*2048, 6))).describe()
+                     0            1            2            3            4            5
+            count 20152320.000 20152320.000 20152320.000 20152320.000 20152320.000 20152320.000
+            mean         0.000       -0.000       -0.000       -0.002       -0.013        0.001
+            std          0.325        0.334        0.364        0.542        0.655        0.527
+            min         -1.000       -1.000       -1.000       -1.000       -1.000       -1.000
+            25%         -0.221       -0.183       -0.234       -0.038       -0.398       -0.019
+            50%          0.000       -0.002        0.003        0.000        0.000        0.000
+            75%          0.221        0.188        0.238        0.031        0.305        0.020
+            max          1.000        1.000        1.000        1.000        1.000        1.000
+    
+    pd.DataFrame(np.reshape(data_val, (2468*2048, 6))).describe()
+                        0           1           2           3           4           5
+            count 5054464.000 5054464.000 5054464.000 5054464.000 5054464.000 5054464.000
+            mean        0.000      -0.000       0.000      -0.001      -0.013       0.001
+            std         0.331       0.334       0.364       0.538       0.653       0.533
+            min        -1.000      -1.000      -1.000      -1.000      -1.000      -1.000
+            25%        -0.226      -0.192      -0.237      -0.005      -0.378      -0.002
+            50%        -0.001       0.001      -0.000       0.000       0.000       0.000
+            75%         0.224       0.192       0.239       0.002       0.259       0.002
+            max         1.000       1.000       1.000       1.000       1.000       1.000
+    """
     if setting.save_ply_fn is not None:
         folder = os.path.join(root_folder, 'pts')
         print('{}-Saving samples as .ply files to {}...'.format(datetime.now(), folder))
@@ -95,6 +119,7 @@ def main():
     point_num = data_train.shape[1]
     num_val = data_val.shape[0]
     print('{}-{:d}/{:d} training/validation samples.'.format(datetime.now(), num_train, num_val))
+
 
     ######################################################################
     # Placeholders
